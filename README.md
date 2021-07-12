@@ -2,18 +2,19 @@ Hexagon Processor Module
 ========================
 This is [Hexagon](https://developer.qualcomm.com/software/hexagon-dsp-sdk/dsp-processor) (aka QDSP6) processor module for  [IDA Pro](https://www.hex-rays.com/products/ida/) disassembler.
 Features:
- * Supports all Hexagon versions: V4, V5, V55, V60, V61, V62, V65, V66, V67, V67t
- * Supports Hexagon Vector Extensions (HVX), audio extensions, NN extensions
+ * Supports all Hexagon versions: V4, V5, V55, V60, V61, V62, V65, V66, V67, V67t, V68
+ * Supports Hexagon Vector Extensions (HVX), audio extensions
+ * Supports Hexagon Matrix Extensions (HMX), V66 NN extensions
  * Supports all known instructions
  * Supports ELF relocations (both static and dynamic)
- * Supports IDA v7.0 and v7.2
+ * Supports IDA v7.0-7.6
 
 Information on instructions was mainly gathered from [LLVM](https://github.com/llvm/llvm-project/blob/master/llvm/lib/Target/Hexagon/HexagonDepInstrInfo.td), whereas missing system-level instructions were taken from Programmer's Reference Manual.
 
 
 Compilation
 -----------
-You will need the IDA 7.0 [SDK](https://www.hex-rays.com/products/ida/support/ida/idasdk70.zip) or IDA 7.2 [SDK](https://www.hex-rays.com/products/ida/support/ida/idasdk72.zip) (password protected).  
+You will need the target IDA SDK ([7.0](https://www.hex-rays.com/products/ida/support/ida/idasdk70.zip), [7.2](https://www.hex-rays.com/products/ida/support/ida/idasdk72.zip), [7.3](https://www.hex-rays.com/products/ida/support/ida/idasdk73.zip), [7.5](https://www.hex-rays.com/products/ida/support/ida/idasdk75.zip)) (password protected).  
 You will also need a C++17 compiler, like Visual Studio 2015/2017, or any recent GCC or Clang.
 
 Install target IDA SDK, copy `hexagon` folder into $SDK/module folder, and modify $SDK/module/makefile to include hexagon in `ALLDIRS`.  
@@ -72,3 +73,9 @@ History
 2020-07-10 trace SP modification at the end of a packet  
 2020-07-13 added automatic comments for function arguments  
 2020-07-16 added switch support; version 2.0 released  
+2021-02-04 added support for IDA v7.3 and v7.5  
+2021-02-26 added support for Hexagon v68  
+2021-03-02 fixed analysis order; version 3.0 released  
+2021-06-25 fixed crashes related to missing segment registers  
+2021-07-12 added missing segment registers (@flowswitch) and added IDA v7.6 support
+
