@@ -14,7 +14,7 @@ Information on instructions was mainly gathered from [LLVM](https://github.com/l
 
 Compilation
 -----------
-You will need the target IDA SDK ([7.0](https://www.hex-rays.com/products/ida/support/ida/idasdk70.zip), [7.2](https://www.hex-rays.com/products/ida/support/ida/idasdk72.zip), [7.3](https://www.hex-rays.com/products/ida/support/ida/idasdk73.zip), [7.5](https://www.hex-rays.com/products/ida/support/ida/idasdk75.zip)) (password protected).  
+You will need the target IDA SDK ([7.0](https://www.hex-rays.com/products/ida/support/ida/idasdk70.zip), [7.2](https://www.hex-rays.com/products/ida/support/ida/idasdk72.zip), [7.3](https://www.hex-rays.com/products/ida/support/ida/idasdk73.zip), [7.5](https://www.hex-rays.com/products/ida/support/ida/idasdk75.zip), [7.6](https://www.hex-rays.com/products/ida/support/ida/idasdk76.zip)) (password protected).  
 You will also need a C++17 compiler, like Visual Studio 2015/2017, or any recent GCC or Clang.
 
 Install target IDA SDK, copy `hexagon` folder into $SDK/module folder, and modify $SDK/module/makefile to include hexagon in `ALLDIRS`.  
