@@ -5,9 +5,14 @@
 
 ------------------------------------------------------------------------------*/
 #include "common.h"
-#include <segregs.hpp>
 
 static bool hex_is_switch( const insn_t &insn, switch_info_t *si );
+
+// Ideally the duplex instructions should be represented as two individual insn_t.
+// But this would conflict with the way how IDA associates instructions with physical addresses (EAs),
+// because in duplex instructions the logically "first" sub-instruction is at a higher address.
+// The compound insn_t makes it difficult to enumerate the stream of instructions.
+// Hence the template below:
 
 template <typename Visitor, typename ...Args>
 static __inline bool visit_sub_insn( const insn_t &insn, Visitor visitor, Args... args )
@@ -40,7 +45,7 @@ static bool is_ret_or_jump( const insn_t &insn )
            (insn_flags( insn, 0 ) & PRED_MASK) == 0;
 }
 
-bool hex_t::hex_is_basic_block_end( const insn_t &insn, bool call_insn_stops_block )
+static bool hex_is_basic_block_end( const insn_t &insn )
 {
     static ea_t next_ea = BADADDR;
     static bool basic_block_end = false;
@@ -146,7 +151,7 @@ static void create_stack_spill_vars( func_t *pfn, ea_t target )
     }
 }
 
-void hex_t::handle_operand( const insn_t &insn, const op_t &op )
+static void handle_operand( const insn_t &insn, const op_t &op )
 {
     fixup_data_t fd;
     flags_t F;
@@ -202,10 +207,9 @@ void hex_t::handle_operand( const insn_t &insn, const op_t &op )
 }
 
 // emulate an instruction
-int hex_t::emu( const insn_t &insn )
+ssize_t emu( const insn_t &insn )
 {
-    bool call_insn_stops_block=false;
-    if( !hex_is_basic_block_end(insn,call_insn_stops_block) )
+    if( !hex_is_basic_block_end( insn ) )
         add_cref( insn.ea, insn.ea + insn.size, fl_F );
     else if( get_auto_state() == AU_USED )
         recalc_spd( insn.ea );
@@ -228,7 +232,7 @@ int hex_t::emu( const insn_t &insn )
     return 1; // ok
 }
 
-bool hex_t::hex_is_call_insn( const insn_t &insn )
+bool hex_is_call_insn( const insn_t &insn )
 {
     return insn.itype == Hex_call ||
            insn.itype == Hex_callr;
@@ -262,7 +266,7 @@ static __inline bool is_allocframe( const insn_t &insn )
         insn.itype == Hex_allocframe;
 }
 
-int hex_t::hex_may_be_func( const insn_t &insn, int /*state*/ )
+ssize_t hex_may_be_func( const insn_t &insn, int /*state*/ )
 {
     // start of packet?
     if( !(insn.flags & INSN_PKT_BEG) )
@@ -283,7 +287,7 @@ int hex_t::hex_may_be_func( const insn_t &insn, int /*state*/ )
     return 0;
 }
 
-int hex_t::hex_is_align_insn( ea_t ea ) const
+ssize_t hex_is_align_insn( ea_t ea )
 {
     const ea_t start = ea;
     insn_t insn;
@@ -307,14 +311,25 @@ bool hex_is_jump_func( func_t &pfn, ea_t *jump_target, ea_t *func_pointer )
 {
     ea_t ea = pfn.start_ea;
     if( pfn.end_ea == ea + 16 &&                            // 16 bytes long:
-        (get_dword( ea + 0 ) & 0x0000C000) == 0x00004000 && // extender
-        (get_dword( ea + 4 ) & 0xffffe01f) == 0x6a49c00e && // r14 = add(pc, ##off@pcrel)
-        get_dword( ea +  8 ) == 0x918ec01c &&               // r28 = memw(r14)
-        get_dword( ea + 12 ) == 0x529cc000 )                // jumpr r28
+        (get_dword( ea + 0 ) & 0xf000C000) == 0x00004000 && // { extender
+        (get_dword( ea + 4 ) & 0xffffe01f) == 0x6a49c00e && //   r14 = add(pc, ##off@pcrel) }
+        get_dword( ea +  8 ) == 0x918ec01c &&               // { r28 = memw(r14) }
+        get_dword( ea + 12 ) == 0x529cc000 )                // { jumpr r28 }
     {
         uint32_t ext = get_dword( ea ), ins = get_dword( ea + 4 );
         uint32_t off = ((ext & 0x0fff0000) << 4) | ((ext & 0x3fff) << 6) | ((ins >> 7) & 0x3f);
         *jump_target = get_dword( ea + off );
+        if( func_pointer ) *func_pointer = BADADDR;
+        return true;
+    }
+    else if( pfn.end_ea == ea + 12 &&                       // 12 bytes long:
+        (get_dword( ea + 0 ) & 0xf000C000) == 0x00004000 && // { extender
+        (get_dword( ea + 4 ) & 0xffffe01f) == 0x6a49c00e && //   r14 = add(pc, ##off@pcrel) }
+        get_dword( ea + 8 ) == 0x528ec000 )                 // { jumpr r14 }
+    {
+        uint32_t ext = get_dword( ea ), ins = get_dword( ea + 4 );
+        uint32_t off = ((ext & 0x0fff0000) << 4) | ((ext & 0x3fff) << 6) | ((ins >> 7) & 0x3f);
+        *jump_target = ea + off;
         if( func_pointer ) *func_pointer = BADADDR;
         return true;
     }
@@ -356,7 +371,7 @@ void hex_create_func_frame( func_t *pfn )
     }
 }
 
-int hex_get_frame_retsize( const func_t */*pfn*/ )
+int hex_get_frame_retsize( const func_t &/*pfn*/ )
 {
     // the return address is in LR, don't allocate stack for it
     return 0;
@@ -382,16 +397,16 @@ void hex_get_cc_regs( cm_t /*cc*/, callregs_t &regs )
     regs.set( ARGREGS_GP_ONLY, r0_5, NULL );
 }
 
-bool hex_calc_retloc(argloc_t *retloc, const tinfo_t &tif, cm_t cc)
+bool hex_calc_retloc( cm_t /*cc*/, const tinfo_t &type, argloc_t &loc )
 {
-    if( !tif.is_void() )
+    if( !type.is_void() )
     {
-        size_t size = tif.get_size();
+        size_t size = type.get_size();
         if( size == BADSIZE ) return false;
         if( size <= 4 )
-            retloc->set_reg1( REG_R0 );
+            loc.set_reg1( REG_R0 );
         else if( size <= 8 )
-            retloc->set_reg2( REG_R0, REG_R0 + 1 );
+            loc.set_reg2( REG_R0, REG_R0 + 1 );
         else
         {
             // allocate on stack with pointer in R0
@@ -404,7 +419,7 @@ bool hex_calc_retloc(argloc_t *retloc, const tinfo_t &tif, cm_t cc)
             stkloc.set_stkoff( 0 );
             stkloc.off = 0;
             stkloc.size = size;
-            retloc->consume_scattered( sa );
+            loc.consume_scattered( sa );
         }
     }
     return true;
@@ -413,7 +428,7 @@ bool hex_calc_retloc(argloc_t *retloc, const tinfo_t &tif, cm_t cc)
 bool hex_calc_arglocs( func_type_data_t &fti )
 {
     // fill the return value location
-    if( !hex_calc_retloc( &fti.retloc, fti.rettype, fti.get_cc() ) )
+    if( !hex_calc_retloc( fti.get_cc(), fti.rettype, fti.retloc ) )
         return false;
 
     uint32_t reg = 0, stk_sz = 0, align;
@@ -456,9 +471,9 @@ static bool insn_modifies_op0( uint32_t itype )
 {
     // returns true if instruction writes to %0
     // NB: regenerate if instructions or their order changes!
-    static uint32_t mod[] = {
+    static const uint32_t mod[] = {
         0xfffffffe, 0xbf7fffff, 0xffffffff, 0x000539c1, 0x022d0808, 0xf1c004c0, 0xffffffff, 0xffffffff,
-        0xffffffff, 0xffffffff, 0xffffffff, 0xfffcffff, 0xff3fffff, 0x001fc1ff,
+        0xffffffff, 0xffffffff, 0x733fffff, 0xe7ffffff, 0xffffffff, 0xfe0ffff9,
     };
     assert( itype < _countof(mod) * 32 );
     return (mod[ itype >> 5 ] >> (itype & 31)) & 1;
@@ -479,7 +494,7 @@ static bool _spoils( uint32_t itype, uint32_t flags, const op_t *ops, uint32_t r
 // hack to skip our target function call
 static ea_t s_call_ea = BADADDR;
 
-int hex_t::spoils( const insn_t &insn, uint32_t reg1, uint32_t reg2 = ~0u )
+static int spoils( const insn_t &insn, uint32_t reg1, uint32_t reg2 = ~0u )
 {
     // checks if instruction modifies either reg1 or reg2
     // returns: 0 - doesn't; 1 - does; 2 - modifies all registers (i.e. function call)
@@ -491,15 +506,16 @@ int hex_t::spoils( const insn_t &insn, uint32_t reg1, uint32_t reg2 = ~0u )
     return visit_sub_insn( insn, _spoils, reg1, reg2 )? 1 : 0;
 }
 
-bool hex_t::hex_set_op_type( const insn_t &/*insn*/, const op_t &/*op*/, const tinfo_t &/*type*/, const char* /*name*/, eavec_t */*visited*/ )
+static bool idaapi set_op_type( const insn_t &/*insn*/, const op_t &/*op*/, const tinfo_t &/*type*/, const char* /*name*/ )
 {
-    // called only for instructions that pass is_stkarg_write() test;
+    // called only for instructions that pass is_stkarg_load() test;
     // 'op' is insn.ops[src]; return value is ignored
     return false; // VERY simplified version :)
 }
 
 static bool _is_stkarg_write( uint32_t itype, uint32_t flags, const op_t *ops, int *src, int *dst )
 {
+    // memXX(sp+#Ii) = ... or memXX(fp+#Ii) = ...
     ops += get_op_index( flags );
     if( itype != Hex_mov || ops[0].type != o_displ ||
         ops[0].reg != REG_SP && ops[0].reg != REG_FP )
@@ -510,45 +526,63 @@ static bool _is_stkarg_write( uint32_t itype, uint32_t flags, const op_t *ops, i
     return true;
 }
 
-static bool hex_set_op_type(
-        const insn_t &insn,
-        const op_t &x,
-        const tinfo_t &tif,
-        const char *name,
-        eavec_t *visited)
+#if IDA_SDK_VERSION < 750
+static bool idaapi is_stkarg_load( const insn_t &insn, int *src, int *dst )
 {
-    return false;
+    // NB: function name is misleading
+    // returns true if instruction writes to stack
+    return visit_sub_insn( insn, _is_stkarg_write, src, dst );
 }
 
-struct hex_argtinfo_helper_t : public argtinfo_helper_t {
-    hex_t &pm;
-    hex_argtinfo_helper_t(hex_t &_pm) : pm(_pm) {}
-    bool idaapi set_op_tinfo(
-            const insn_t &insn,
-            const op_t &x,
-            const tinfo_t &tif,
-            const char *name) override
-    {
-        eavec_t visited;
-        return pm.hex_set_op_type(insn, x, tif, name, &visited);
-    }
-
-    bool idaapi is_stkarg_load(const insn_t &insn, int *src, int *dst) override {
-        // returns true if instruction writes to stack
-        return visit_sub_insn(insn, _is_stkarg_write, src, dst);
-    }
-};
-
-void hex_t::hex_use_arg_types( ea_t ea, func_type_data_t *fti, funcargvec_t *rargs )
+void hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
 {
     s_call_ea = ea;
     // set ea to the end of the packet
     ea = find_packet_end( ea ) + 4;
-    hex_argtinfo_helper_t argtypes_helper(*this);
-    argtypes_helper.use_arg_tinfos(ea, fti, rargs);
+    gen_use_arg_tinfos(
+        ea, &fti, &rargs,
+        &set_op_type,
+        &is_stkarg_load,
+        NULL
+    );
 }
 
-int hex_t::hex_use_regarg_type( ea_t ea, const funcargvec_t &rargs )
+#else
+
+struct hex_argtinfo_helper_t : argtinfo_helper_t
+{
+    virtual bool idaapi set_op_tinfo(
+        const insn_t &insn,
+        const op_t &x,
+        const tinfo_t &tif,
+        const char *name ) override
+    {
+        return set_op_type( insn, x, tif, name );
+    }
+
+    virtual bool idaapi is_stkarg_load(
+        const insn_t &insn,
+        int *src,
+        int *dst ) override
+    {
+        // NB: function name is misleading
+        // returns true if instruction writes to stack
+        return visit_sub_insn( insn, _is_stkarg_write, src, dst );
+    }
+};
+
+void hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
+{
+    s_call_ea = ea;
+    // set ea to the end of the packet
+    ea = find_packet_end( ea ) + 4;
+    hex_argtinfo_helper_t hlp;
+    hlp.use_arg_tinfos( ea, &fti, &rargs );
+}
+
+#endif
+
+int hex_use_regarg_type( ea_t ea, const funcargvec_t &rargs )
 {
     // allows IDA to put comments where the corresponding arguments are written in registers
     // NB: unfortunately this doesn't work when 2 or more registers are changed by a single instruction
@@ -600,9 +634,12 @@ int hex_t::hex_use_regarg_type( ea_t ea, const funcargvec_t &rargs )
 #undef JUMP_DEBUG
 #include "../jptcmn.cpp"
 
-
 struct hex_jump_pattern_t : public jump_pattern_t
 {
+    hex_jump_pattern_t( switch_info_t *_si ) : jump_pattern_t( _si, s_roots, s_depends )
+    {
+        allow_noflows = false;
+    }
     enum { rA, rB, rT, rI, rP };
     static constexpr char s_roots[] = { 1, 0 };
     static constexpr char s_depends[][2] = {
@@ -612,11 +649,6 @@ struct hex_jump_pattern_t : public jump_pattern_t
         { 0 },        // 3
         { 0 },        // 4
     };
-
-    hex_jump_pattern_t( switch_info_t *_si ) : jump_pattern_t( _si, s_roots, s_depends )
-    {
-        allow_noflows = false;
-    }
     virtual bool jpi4( void );
     virtual bool jpi3( void );
     virtual bool jpi2( void );
@@ -786,9 +818,9 @@ bool hex_jump_pattern_t::mov_unset( const op_t &op, uint32_t reg )
     return found;
 }
 
-static jump_table_type_t is_jump_pattern( switch_info_t *si, const insn_t &insn, procmod_t *pm)
+static jump_table_type_t is_jump_pattern( switch_info_t *si, const insn_t &insn )
 {
-    hex_jump_pattern_t jp(pm, si );
+    hex_jump_pattern_t jp( si );
     return jp.match( insn )? JT_FLAT32 : JT_NONE;
 }
 
@@ -816,33 +848,28 @@ static jump_table_type_t is_jump_pattern( switch_info_t *si, const insn_t &insn,
           -> 3
                -> 4
 */
-    enum { rA, rB, rT, rI };
-    static constexpr char s_depends[][4] = {
-        { 1 },        // 0
-        { 2, 3 },     // 1
-        { 3, 4 },     // 2
-        { 0 },        // 3
-        { 0 },        // 4
-    };
+static const char hex_depends[][4] = {
+    { 1 },        // 0
+    { 2, 3 },     // 1
+    { 3, 4 },     // 2
+    { 0 },        // 3
+    { 0 },        // 4
+};
 
 struct hex_jump_pattern_t : public jump_pattern_t
 {
-protected:
-    hex_t &pm;
-public:
-    hex_jump_pattern_t(procmod_t *_pm, switch_info_t *si )
-    : jump_pattern_t( si, s_depends, rI ),
-      pm(*(hex_t *)_pm)
+    hex_jump_pattern_t( switch_info_t *_si ) : jump_pattern_t( _si, hex_depends, rI )
     {
         modifying_r32_spoils_r64 = false;
-        si->flags |= SWI_HXNOLOWCASE;
+        _si->flags |= SWI_HXNOLOWCASE;
     }
+    enum { rA, rB, rT, rI };
     virtual bool jpi4( void );
     virtual bool jpi3( void );
     virtual bool jpi2( void );
     virtual bool jpi1( void );
     virtual bool jpi0( void );
-    virtual bool handle_mov( tracked_regs_t &regs );
+    virtual bool handle_mov( tracked_regs_t &_regs );
     virtual bool equal_ops( const op_t &x, const op_t &y ) const;
 };
 
@@ -960,7 +987,7 @@ bool hex_jump_pattern_t::jpi0( void )
     return false;
 }
 
-bool hex_jump_pattern_t::handle_mov( tracked_regs_t &regs )
+bool hex_jump_pattern_t::handle_mov( tracked_regs_t &_regs )
 {
     // track register movement
     if( insn.itype != Hex_mov ||
@@ -969,7 +996,7 @@ bool hex_jump_pattern_t::handle_mov( tracked_regs_t &regs )
 
     // stack load or store?
     const op_t *ops = insn.ops + get_op_index( insn_flags( insn ) );
-    return set_moved( ops[0], ops[1], regs );
+    return set_moved( ops[0], ops[1], _regs );
 }
 
 bool hex_jump_pattern_t::equal_ops( const op_t &x, const op_t &y ) const
@@ -993,9 +1020,13 @@ bool hex_jump_pattern_t::equal_ops( const op_t &x, const op_t &y ) const
     return false;
 }
 
-static int is_jump_pattern( switch_info_t *si, const insn_t &insn, procmod_t *pm)
+#if IDA_SDK_VERSION < 750
+static int is_jump_pattern( switch_info_t *si, const insn_t &insn )
+#else
+static int is_jump_pattern( switch_info_t *si, const insn_t &insn, procmod_t* /*procmod*/ )
+#endif
 {
-    hex_jump_pattern_t jp( pm,si );
+    hex_jump_pattern_t jp( si );
     return jp.match( insn )? JT_SWITCH : JT_NONE;
 }
 
