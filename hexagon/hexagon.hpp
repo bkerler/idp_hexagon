@@ -27,13 +27,6 @@ enum {
 };
 
 
-// IDA compatibility stuff
-#if IDA_SDK_VERSION < 730
-static inline ea_t  inf_get_start_ea()  { return inf.start_ea; }
-static inline uchar inf_get_cc_size_l() { return inf.cc.size_l; }
-static inline uchar inf_get_cc_size_e() { return inf.cc.size_e; }
-#endif
-
 uint32_t get_num_ops( uint32_t itype, uint32_t flags );
 ea_t find_packet_end( ea_t ea );
 const char *get_insn_template( uint32_t itype );
@@ -67,3 +60,9 @@ struct hexagon_t : public procmod_t
   int hex_use_regarg_type( ea_t ea, const funcargvec_t &rargs );
 };
 
+// IDA compatibility stuff
+#if IDA_SDK_VERSION < 730
+static inline ea_t  inf_get_start_ea()  { return inf.start_ea; }
+static inline uchar inf_get_cc_size_l() { return inf.cc.size_l; }
+static inline uchar inf_get_cc_size_e() { return inf.cc.size_e; }
+#endif
