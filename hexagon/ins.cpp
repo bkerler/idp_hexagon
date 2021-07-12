@@ -4,7 +4,7 @@
   All rights reserved.
 
 ------------------------------------------------------------------------------*/
-#include "common.h"
+#include "hexagon.hpp"
 
 static const char *const insn_template[] = {
     "",                                     // Hex_NONE

@@ -4,7 +4,7 @@
   All rights reserved.
 
 ------------------------------------------------------------------------------*/
-#include "common.h"
+#include "hexagon.hpp"
 #include "../../ldr/elf/elfbase.h"
 #include "../../ldr/elf/elf.h"
 #include "elfr_hexagon.h"
@@ -374,7 +374,7 @@ static proc_def_t hexagon_proc = {
 };
 
 // ELF loader machine type checkpoint
-ssize_t loader_elf_machine( linput_t*, int machine_type, const char**, proc_def_t **p_pd )
+ssize_t hexagon_t::loader_elf_machine( linput_t*, int machine_type, const char**, proc_def_t **p_pd )
 {
     // tell ELF loader to use our mini-plugin for processor-specific stuff
     assert( machine_type == EM_QDSP6 );
@@ -384,7 +384,7 @@ ssize_t loader_elf_machine( linput_t*, int machine_type, const char**, proc_def_
 
 #else
 
-ssize_t loader_elf_machine( linput_t*, int machine_type, const char**, proc_def_t **p_pd )
+ssize_t hexagon_t::loader_elf_machine( linput_t*, int machine_type, const char**, proc_def_t **p_pd )
 {
     // tell ELF loader to use our mini-plugin for processor-specific stuff
     assert( machine_type == EM_QDSP6 );

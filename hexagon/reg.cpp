@@ -4,7 +4,7 @@
   All rights reserved.
 
 ------------------------------------------------------------------------------*/
-#include "common.h"
+#include "hexagon.hpp"
 
 // configuration flags
 uint16_t idpflags = HEX_BRACES_FOR_SINGLE | HEX_CR_FOR_DUPLEX;
@@ -93,7 +93,16 @@ Hexagon specific options
     }
 }
 
-static ssize_t idaapi notify( void*, int notification_code, va_list va )
+//----------------------------------------------------------------------
+// This old-style callback only returns the processor module object.
+static ssize_t idaapi notify(void *, int msgid, va_list)
+{
+  if ( msgid == processor_t::ev_get_procmod )
+    return size_t(new hexagon_t);
+  return 0;
+}
+
+ssize_t idaapi hexagon_t::on_event(ssize_t notification_code, va_list va)
 {
     switch( notification_code )
     {
@@ -183,7 +192,7 @@ static ssize_t idaapi notify( void*, int notification_code, va_list va )
     case processor_t::ev_realcvt: {
         // must be implemented for floats to work
         auto m = va_arg( va, void* );
-        auto e = va_arg( va, fpvalue_t* );
+        fpvalue_t* e = va_arg( va, fpvalue_t* );
         auto swt = va_argi( va, uint16 );
         int code = ieee_realcvt( m, e, swt );
         return code == 0? 1 : code;
@@ -238,6 +247,7 @@ static ssize_t idaapi notify( void*, int notification_code, va_list va )
     case processor_t::ev_get_default_enum_size:
         return inf_get_cc_size_e();
     }
+
     // by default always return 0
     return 0;
 }
@@ -334,39 +344,39 @@ enum qdsp_reg_t
     // monitor mode control registers
     QDSP_REG_S0          = REG_G0 + 32,
     rVcs         = REG_S0 + 128,
-  	rVds
+    rVds
 };
 
-static const char *const qdsp_reg_names[]
+static const char *const reg_names[]
 {
-	//general
-	"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", 
-	"r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "sp", "fp", "lr",
-	//predicates
-	"p0", "p1", "p2", "p3",
-	//vector
-	"v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", 
-	"v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
-	"q0", "q1", "q2", "q3",
-	//zero, virtual temporary
-	"z", "vtmp",
-	//control	
-	"c0", "c1", "c2", "c3", "c4", "c5", "m0", "m1", "c8", "pc", "c10", "gp", "c12", "c13", "c14", "c15", 
-	"c16", "c17", "c18", "c19", "c20", "c21", "c22", "c23", "c24", "c25", "c26", "c27", "c28", "c29", "c30", "c31",
-	//guest mode control
-	"g0", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10", "g11", "g12", "g13", "g14", "g15", 
-	"g16", "g17", "g18", "g19", "g20", "g21", "g22", "g23", "g24", "g25", "g26", "g27", "g28", "g29", "g30", "g31",
-	//monitor mode control
-	"s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15", 
-	"s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31", 
-	"s32", "s33", "s34", "s35", "s36", "s37", "s38", "s39", "s40", "s41", "s42", "s43", "s44", "s45", "s46", "s47", 
-	"s48", "s49", "s50", "s51", "s52", "s53", "s54", "s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62", "s63", 
-	"s64", "s65", "s66", "s67", "s68", "s69", "s70", "s71", "s72", "s73", "s74", "s75", "s76", "s77", "s78", "s79", 
-	"s80", "s81", "s82", "s83", "s84", "s85", "s86", "s87", "s88", "s89", "s90", "s91", "s92", "s93", "s94", "s95", 
-	"s96", "s97", "s98", "s99", "s100", "s101", "s102", "s103", "s104", "s105", "s106", "s107", "s108", "s109", "s110", "s111", 
-	"s112", "s113", "s114", "s115", "s116", "s117", "s118", "s119", "s120", "s121", "s122", "s123", "s124", "s125", "s126", "s127", 
-	//virtual segregs
-	"cs", "ds"
+    //general
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", 
+    "r16", "r17", "r18", "r19", "r20", "r21", "r22", "r23", "r24", "r25", "r26", "r27", "r28", "sp", "fp", "lr",
+    //predicates
+    "p0", "p1", "p2", "p3",
+    //vector
+    "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", 
+    "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
+    "q0", "q1", "q2", "q3",
+    //zero, virtual temporary
+    "z", "vtmp",
+    //control   
+    "c0", "c1", "c2", "c3", "c4", "c5", "m0", "m1", "c8", "pc", "c10", "gp", "c12", "c13", "c14", "c15", 
+    "c16", "c17", "c18", "c19", "c20", "c21", "c22", "c23", "c24", "c25", "c26", "c27", "c28", "c29", "c30", "c31",
+    //guest mode control
+    "g0", "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10", "g11", "g12", "g13", "g14", "g15", 
+    "g16", "g17", "g18", "g19", "g20", "g21", "g22", "g23", "g24", "g25", "g26", "g27", "g28", "g29", "g30", "g31",
+    //monitor mode control
+    "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15", 
+    "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23", "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31", 
+    "s32", "s33", "s34", "s35", "s36", "s37", "s38", "s39", "s40", "s41", "s42", "s43", "s44", "s45", "s46", "s47", 
+    "s48", "s49", "s50", "s51", "s52", "s53", "s54", "s55", "s56", "s57", "s58", "s59", "s60", "s61", "s62", "s63", 
+    "s64", "s65", "s66", "s67", "s68", "s69", "s70", "s71", "s72", "s73", "s74", "s75", "s76", "s77", "s78", "s79", 
+    "s80", "s81", "s82", "s83", "s84", "s85", "s86", "s87", "s88", "s89", "s90", "s91", "s92", "s93", "s94", "s95", 
+    "s96", "s97", "s98", "s99", "s100", "s101", "s102", "s103", "s104", "s105", "s106", "s107", "s108", "s109", "s110", "s111", 
+    "s112", "s113", "s114", "s115", "s116", "s117", "s118", "s119", "s120", "s121", "s122", "s123", "s124", "s125", "s126", "s127", 
+    //virtual segregs
+    "cs", "ds"
 };
 
 //-----------------------------------------------------------------------
@@ -382,7 +392,9 @@ processor_t LPH = {
     PR_DEFSEG32 |           // segments are 32-bit by default
     PRN_HEX |               // default number representation: == hex
     PR_TYPEINFO |           // support the type system notifications
-    PR_USE_ARG_TYPES,       // use processor_t::ev_use_arg_types callback
+    PR_USE_ARG_TYPES,        // use processor_t::ev_use_arg_types callback
+    //PR_ALIGN,               // all data items should be aligned properly
+                            // flag2:
     PR2_REALCVT |           // the module has 'realcvt' event implementation
     PR2_IDP_OPTS,           // the module has processor-specific configuration options
     8,                      // cnbits: 8 bits in a byte for code segments
@@ -395,13 +407,13 @@ processor_t LPH = {
                             // selection menu
     asms,                   // array of target assemblers
     notify,                 // the kernel event notification callback
-    qdsp_reg_names,              // regsiter names
-    qnumber(qdsp_reg_names),     // number of registers
+    reg_names,              // regsiter names
+    qnumber(reg_names),     // number of registers
 
-    rVcs,                      // index of first segment register
-    rVds,                      // index of last segment register
+    0,                      // index of first segment register
+    1,                      // index of last segment register
     0,                      // size of a segment register in bytes
-    rVcs, rVds,                   // index of CS & DS registers
+    0, 1,                   // index of CS & DS registers
 
     NULL,                   // no known code start sequences
     NULL,                   // no known 'return' instructions

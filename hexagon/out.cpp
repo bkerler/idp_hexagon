@@ -4,7 +4,7 @@
   All rights reserved.
 
 ------------------------------------------------------------------------------*/
-#include "common.h"
+#include "hexagon.hpp"
 
 #define S_(color, str)                  SCOLOR_ON SCOLOR_##color str
 #define S_INSN(str)                     S_(INSN, str)
@@ -14,26 +14,26 @@
 #define S_REG(str)                      S_(REG, str)
 
 // generate header
-void out_header( outctx_t &ctx )
+void hexagon_t::out_header( outctx_t &ctx )
 {
     ctx.gen_header( GH_PRINT_ALL );
 }
 
 // generate footer
-void out_footer( outctx_t &ctx )
+void hexagon_t::out_footer( outctx_t &ctx )
 {
     qstring nbuf = get_colored_name( inf_get_start_ea() );
     const char *name = nbuf.c_str();
-#if IDA_SDK_VERSION == 750
+#if IDA_SDK_VERSION >= 750
     asm_t &ash = ctx.ash;
 #endif
-    const char *end = ctx.ash.end;
+    const char *end = ash.end;
     if ( end == NULL )
-        ctx.gen_printf( -1, COLSTR("%s end %s",SCOLOR_AUTOCMT), ctx.ash.cmnt, name );
+        ctx.gen_printf( -1, COLSTR("%s end %s",SCOLOR_AUTOCMT), ash.cmnt, name );
     else
         ctx.gen_printf( -1,
             COLSTR("%s",SCOLOR_ASMDIR) " " COLSTR("%s %s",SCOLOR_AUTOCMT),
-            ctx.ash.end, ctx.ash.cmnt, name );
+            ash.end, ash.cmnt, name );
 }
 
 // user mode control registers
@@ -216,7 +216,7 @@ static void hex_out_mem( outctx_t &ctx, uint32_t type )
         ctx.out_line( infixes[ (type & MEM_INFIX_MASK) >> MEM_INFIX_SHIFT ], COLOR_INSN );
 }
 
-ssize_t out_operand( outctx_t &ctx, const op_t &op )
+ssize_t hexagon_t::out_operand( outctx_t &ctx, const op_t &op )
 {
     uint32_t flags;
     ea_t ea;
@@ -524,7 +524,7 @@ static void out_pkt_end( outctx_t &ctx )
 }
 
 // output an instruction and its operands
-void out_insn( outctx_t &ctx )
+void hexagon_t::out_insn( outctx_t &ctx )
 {
     if( (ctx.insn.flags & INSN_PKT_BEG) )
         out_pkt_beg( ctx );

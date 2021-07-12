@@ -4,7 +4,7 @@
   All rights reserved.
 
 ------------------------------------------------------------------------------*/
-#include "common.h"
+#include "hexagon.hpp"
 
 static bool hex_is_switch( const insn_t &insn, switch_info_t *si );
 
@@ -151,7 +151,7 @@ static void create_stack_spill_vars( func_t *pfn, ea_t target )
     }
 }
 
-static void handle_operand( const insn_t &insn, const op_t &op )
+void hexagon_t::handle_operand( const insn_t &insn, const op_t &op )
 {
     fixup_data_t fd;
     flags_t F;
@@ -207,7 +207,7 @@ static void handle_operand( const insn_t &insn, const op_t &op )
 }
 
 // emulate an instruction
-ssize_t emu( const insn_t &insn )
+int hexagon_t::emu( const insn_t &insn )
 {
     if( !hex_is_basic_block_end( insn ) )
         add_cref( insn.ea, insn.ea + insn.size, fl_F );
@@ -232,7 +232,7 @@ ssize_t emu( const insn_t &insn )
     return 1; // ok
 }
 
-bool hex_is_call_insn( const insn_t &insn )
+bool hexagon_t::hex_is_call_insn( const insn_t &insn )
 {
     return insn.itype == Hex_call ||
            insn.itype == Hex_callr;
@@ -253,7 +253,7 @@ static bool is_return( uint32_t itype, uint32_t /*flags*/, const op_t *ops, bool
     return false;
 }
 
-bool hex_is_ret_insn( const insn_t &insn, bool strict )
+bool hexagon_t::hex_is_ret_insn( const insn_t &insn, bool strict )
 {
     return visit_sub_insn( insn, is_return, strict );
 }
@@ -266,7 +266,7 @@ static __inline bool is_allocframe( const insn_t &insn )
         insn.itype == Hex_allocframe;
 }
 
-ssize_t hex_may_be_func( const insn_t &insn, int /*state*/ )
+ssize_t hexagon_t::hex_may_be_func( const insn_t &insn, int /*state*/ )
 {
     // start of packet?
     if( !(insn.flags & INSN_PKT_BEG) )
@@ -287,7 +287,7 @@ ssize_t hex_may_be_func( const insn_t &insn, int /*state*/ )
     return 0;
 }
 
-ssize_t hex_is_align_insn( ea_t ea )
+ssize_t hexagon_t::hex_is_align_insn( ea_t ea )
 {
     const ea_t start = ea;
     insn_t insn;
@@ -307,7 +307,7 @@ ssize_t hex_is_align_insn( ea_t ea )
     return 0;
 }
 
-bool hex_is_jump_func( func_t &pfn, ea_t *jump_target, ea_t *func_pointer )
+bool hexagon_t::hex_is_jump_func( func_t &pfn, ea_t *jump_target, ea_t *func_pointer )
 {
     ea_t ea = pfn.start_ea;
     if( pfn.end_ea == ea + 16 &&                            // 16 bytes long:
@@ -356,7 +356,7 @@ static bool create_frame( uint32_t itype, uint32_t /*flags*/, const op_t *ops, f
     return false;
 }
 
-void hex_create_func_frame( func_t *pfn )
+void hexagon_t::hex_create_func_frame( func_t *pfn )
 {
     ea_t ea = pfn->start_ea, end = pfn->end_ea;
     insn_t insn;
@@ -371,13 +371,13 @@ void hex_create_func_frame( func_t *pfn )
     }
 }
 
-int hex_get_frame_retsize( const func_t &/*pfn*/ )
+int hexagon_t::hex_get_frame_retsize( const func_t &/*pfn*/ )
 {
     // the return address is in LR, don't allocate stack for it
     return 0;
 }
 
-int hex_is_sp_based( const insn_t &/*insn*/, const op_t &op )
+int hexagon_t::hex_is_sp_based( const insn_t &/*insn*/, const op_t &op )
 {
     // Rd = add(sp, #I) or memX({sp|fp} + #I)
     if( op.type == o_displ && op.reg == REG_FP )
@@ -390,14 +390,14 @@ int hex_is_sp_based( const insn_t &/*insn*/, const op_t &op )
 // type information support
 //
 
-void hex_get_cc_regs( cm_t /*cc*/, callregs_t &regs )
+void hexagon_t::hex_get_cc_regs( cm_t /*cc*/, callregs_t &regs )
 {
     // provide register allocation schema to IDA
     static const int r0_5[] = { REG_R0 + 0, REG_R0 + 1, REG_R0 + 2, REG_R0 + 3, REG_R0 + 4, REG_R0 + 5, -1 };
     regs.set( ARGREGS_GP_ONLY, r0_5, NULL );
 }
 
-bool hex_calc_retloc( cm_t /*cc*/, const tinfo_t &type, argloc_t &loc )
+bool hexagon_t::hex_calc_retloc( cm_t /*cc*/, const tinfo_t &type, argloc_t &loc )
 {
     if( !type.is_void() )
     {
@@ -425,7 +425,7 @@ bool hex_calc_retloc( cm_t /*cc*/, const tinfo_t &type, argloc_t &loc )
     return true;
 }
 
-bool hex_calc_arglocs( func_type_data_t &fti )
+bool hexagon_t::hex_calc_arglocs( func_type_data_t &fti )
 {
     // fill the return value location
     if( !hex_calc_retloc( fti.get_cc(), fti.rettype, fti.retloc ) )
@@ -534,7 +534,7 @@ static bool idaapi is_stkarg_load( const insn_t &insn, int *src, int *dst )
     return visit_sub_insn( insn, _is_stkarg_write, src, dst );
 }
 
-void hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
+void hexagon_t::hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
 {
     s_call_ea = ea;
     // set ea to the end of the packet
@@ -571,7 +571,7 @@ struct hex_argtinfo_helper_t : argtinfo_helper_t
     }
 };
 
-void hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
+void hexagon_t::hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
 {
     s_call_ea = ea;
     // set ea to the end of the packet
@@ -582,7 +582,7 @@ void hex_use_arg_types( ea_t ea, func_type_data_t &fti, funcargvec_t &rargs )
 
 #endif
 
-int hex_use_regarg_type( ea_t ea, const funcargvec_t &rargs )
+int hexagon_t::hex_use_regarg_type( ea_t ea, const funcargvec_t &rargs )
 {
     // allows IDA to put comments where the corresponding arguments are written in registers
     // NB: unfortunately this doesn't work when 2 or more registers are changed by a single instruction

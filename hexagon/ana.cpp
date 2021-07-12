@@ -4,7 +4,7 @@
   All rights reserved.
 
 ------------------------------------------------------------------------------*/
-#include "common.h"
+#include "hexagon.hpp"
 
 #define EXTEND(val, align)          (extender? uint32_t(extender) | ((val) & 0x3F) : ((val) << (align)))
 #define MUST_EXTEND(val)            (uint32_t(extender) | (val))
@@ -75,7 +75,7 @@ static ea_t find_packet_boundaries( ea_t ea, ea_t *pkt_end )
     return ea;
 }
 
-static uint32_t get_endloop( ea_t pkt_ea )
+uint32_t get_endloop( ea_t pkt_ea )
 {
     uint32_t flags = 0;
     // check 1st word
@@ -4756,7 +4756,7 @@ static bool decode_duplex( insn_t &insn, uint32_t word, uint64_t extender )
 // analyze an instruction
 //
 
-ssize_t ana( insn_t &insn )
+int idaapi ana( insn_t &insn )
 {
     ea_t ea = s_insn_ea = insn.ea;
     // instructions are always aligned on 4
